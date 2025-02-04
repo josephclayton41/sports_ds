@@ -1,0 +1,50 @@
+import pandas as pd
+import joblib
+import statsmodels.api as sm
+
+# Load datasets
+attendance_file = "Kings_Attendance_Post_Covid.csv"
+weather_file = "Sac_Weather_Data.csv"
+
+df = pd.read_csv(attendance_file)
+weather_df = pd.read_csv(weather_file)
+
+# Convert Date columns to datetime format
+df['Date'] = pd.to_datetime(df['Date'])
+weather_df['Date'] = pd.to_datetime(weather_df['Date'])
+
+# Merge datasets on Date
+df.set_index("Date", inplace=True)
+weather_df.set_index("Date", inplace=True)
+merged_df = df.join(weather_df, how="inner")
+
+# Define popular opponents based on average attendance
+popular_opponents = merged_df.groupby('Opponent')['Attendance'].mean().sort_values(ascending=False)
+overall_avg_attendance = merged_df['Attendance'].mean()
+popular_opponents = popular_opponents[popular_opponents > overall_avg_attendance]
+merged_df['Popular_Opponent'] = merged_df['Opponent'].isin(popular_opponents.index).astype(int)
+
+# Create a weekend variable
+merged_df['Weekend'] = merged_df['DayOfWeek'].isin(['Saturday', 'Sunday']).astype(int)
+
+# Define independent and dependent variables
+X = merged_df[['Temperature Avg (°F)', 'Wind Speed Avg (mph)', 'Precipitation (in)', 'Weekend', 'Popular_Opponent']]
+y = merged_df['Attendance']
+
+# Add a constant for regression
+X = sm.add_constant(X)
+
+# Train the regression model
+model = sm.OLS(y, X).fit()
+
+# Save the trained model
+joblib.dump(model, "kings_attendance_model.pkl")
+
+print("Model training complete. Saved as 'kings_attendance_model.pkl'")
+
+# Example Usage: Load model and predict
+if __name__ == "__main__":
+    loaded_model = joblib.load("kings_attendance_model.pkl")
+    new_data = [[1, 65, 10, 0.1, 1]]  # Example input: [const, Temp, Wind, Rain, Popular Opponent]
+    predicted_attendance = loaded_model.predict(new_data)
+    print(f"Predicted Attendance: {predicted_attendance[0]}")
